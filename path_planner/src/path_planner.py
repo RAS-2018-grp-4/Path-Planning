@@ -26,6 +26,8 @@ class Node():
         self.parent = parent        # previous state
         self.x = state[0]           # x position
         self.y = state[1]           # y position
+        self.theta = 0              # orientation
+
         self.movement = (movement[0], movement[1]) # movement from previous to this state
         
         self.g = 0 # path length cost
@@ -51,10 +53,10 @@ class PathPlanner():
         self.y_start_grid = 0 # [1]
 
         # target position
-        self.x_target_odom = 0
-        self.y_target_odom = 0
-        self.x_target_grid = 0
-        self.y_target_grid = 0
+        self.x_target_odom = 0 # [m]
+        self.y_target_odom = 0 # [m]
+        self.x_target_grid = 0 # [1]
+        self.y_target_grid = 0 # [1]
 
     def mapCallback(self, msg):
         self.map_width = msg.info.width
@@ -73,40 +75,6 @@ class PathPlanner():
         self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
     '''
 
-    def update_target(self, msg):
-        point = (msg.pose.position.x, msg.pose.position.y)
-        self.new_target(point)
-
-        # find new path
-        pp.new_start([0.2, 0.2])
-        #pp.new_target([2.2, 0.8])
-        path, visited = pp.A_star()
-        print(path)
-
-        path = pp.smooth_path(path)
-        print(path)
-
-        # construct the path
-        rviz_path = Path()
-        rviz_path.header.frame_id = 'map' 
-
-        for c in path:
-            #path_x = c[0]*pp.map_resolution
-            #path_y = c[1]*pp.map_resolution
-            path_x = c[0]
-            path_y = c[1]
-            #print(path_x, path_y)
-
-            pose = PoseStamped()
-            #pose.header.frame_id = 'map' 
-            pose.pose.position.x = path_x
-            pose.pose.position.y = path_y
-            rviz_path.poses.append(pose)
-
-        path_pub.publish(rviz_path)
-        print(path)
-        print("goal:", pp.x_target_grid, pp.y_target_grid)
-
     def new_start(self, point):
         self.x_start_odom = point[0]
         self.y_start_odom = point[1]
@@ -123,6 +91,40 @@ class PathPlanner():
         status = False
         status = (self.map[x + y*self.map_width] == 100) or (self.map[x + y*self.map_width] == -2)
         return status
+
+    def update_target(self, msg):
+        point = (msg.pose.position.x, msg.pose.position.y)
+        self.new_target(point)
+        self.execute_planner()
+ 
+    def execute_planner(self):
+        self.new_start([0.2, 0.2])
+        #pp.new_target([2.2, 0.8])
+        path, visited = self.A_star()
+        print(path)
+
+        path = self.smooth_path(path)
+        print(path)
+
+        # construct the path
+        rviz_path = Path()
+        rviz_path.header.frame_id = 'map' 
+
+        for c in path:
+            #path_x = c[0]*pp.map_resolution
+            #path_y = c[1]*pp.map_resolution
+            path_x = c[0]
+            path_y = c[1]
+
+            pose = PoseStamped()
+            #pose.header.frame_id = 'map' 
+            pose.pose.position.x = path_x
+            pose.pose.position.y = path_y
+            rviz_path.poses.append(pose)
+
+        path_pub.publish(rviz_path)
+        print(path)
+        print("goal:", self.x_target_grid, self.y_target_grid)
 
     def euclidian_dist(self, x, y, xt, yt):
         h = np.sqrt((x - xt)**2 + (y - yt)**2) 
@@ -188,10 +190,7 @@ class PathPlanner():
 
             # generate new children (apply actions to the current best node)
             children = []
-
             for motion in [(-1, 0), (0, 1), (1, 0), (0, -1), (-1, 1), (1, 1), (1, -1), (-1, -1)]:
-                #print(motion)
-
                 # get the new node state
                 node_state = (current_node.x + motion[0], current_node.y + motion[1]) # simulate the motion
 
@@ -253,7 +252,6 @@ class PathPlanner():
                 idx = idx + len(free_path)
                 start = c
         
-
         return smooth_path
 
     def raytrace(self, start, end):
@@ -308,33 +306,7 @@ if __name__ == '__main__':
     '''
     pp.new_start([0.2, 0.2])
     pp.new_target([2.2, 0.8])
-    path, visited = pp.A_star()
-    print(path)
-
-    path = pp.smooth_path(path)
-    print(path)
-
-    # construct the path
-    rviz_path = Path()
-    rviz_path.header.frame_id = 'map' 
-
-    for c in path:
-        #path_x = c[0]*pp.map_resolution
-        #path_y = c[1]*pp.map_resolution
-        path_x = c[0]
-        path_y = c[1]
-        #print(path_x, path_y)
-
-        pose = PoseStamped()
-        #pose.header.frame_id = 'map' 
-        pose.pose.position.x = path_x
-        pose.pose.position.y = path_y
-        rviz_path.poses.append(pose)
-    path_pub.publish(rviz_path)
-
-
-    print(path)
-    print("goal:", pp.x_target_grid, pp.y_target_grid)
+    pp.execute_planner()
     '''
 
     '''

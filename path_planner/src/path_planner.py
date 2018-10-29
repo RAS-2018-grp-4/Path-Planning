@@ -207,7 +207,7 @@ class PathPlanner():
         start = path[0]
         idx = 0
         for c in path[1:]:
-            free_path, collision = self.raytrace(start, c)          
+            free_path, collision = self.raytrace(start, c)
             if collision:
                 path_x = np.linspace(start[0]*self.map_resolution, free_path[-1][0]*self.map_resolution, num=10, endpoint=True)
                 path_y = np.linspace(start[1]*self.map_resolution, free_path[-1][1]*self.map_resolution, num=10, endpoint=True)
@@ -238,7 +238,7 @@ class PathPlanner():
 
         traversed = []
         for i in range(0, int(n)):      
-            if self.obstacle_collision(int(x), int(y)):
+            if self.obstacle_collision(int(x), int(y)) and i >= 2:
                 return traversed, True
             traversed.append((int(x), int(y)))
 
@@ -247,7 +247,7 @@ class PathPlanner():
                 error -= dy
             else:
                 if error == 0:
-                    if self.obstacle_collision(int(x + x_inc), int(y)):
+                    if self.obstacle_collision(int(x + x_inc), int(y)) and i >= 2:
                         return traversed, True
                     traversed.append((int(x + x_inc), int(y)))
                 y += y_inc

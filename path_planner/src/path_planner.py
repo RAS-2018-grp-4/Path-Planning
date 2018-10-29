@@ -4,6 +4,7 @@ import numpy as np
 
 #import matplotlib.pyplot as plt
 import rospy
+from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import MapMetaData
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
@@ -14,6 +15,8 @@ from std_msgs.msg import String
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
 from math import cos, sin, atan2, fabs, sqrt
 import numpy as np
+
+PoseStamped
 
 rospy.init_node('path_planner_node', anonymous=True)
 rate = rospy.Rate(1)
@@ -69,6 +72,40 @@ class PathPlanner():
         self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
         self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
     '''
+
+    def update_target(self, msg):
+        point = (msg.pose.position.x, msg.pose.position.y)
+        self.new_target(point)
+
+        # find new path
+        pp.new_start([0.2, 0.2])
+        #pp.new_target([2.2, 0.8])
+        path, visited = pp.A_star()
+        print(path)
+
+        path = pp.smooth_path(path)
+        print(path)
+
+        # construct the path
+        rviz_path = Path()
+        rviz_path.header.frame_id = 'map' 
+
+        for c in path:
+            #path_x = c[0]*pp.map_resolution
+            #path_y = c[1]*pp.map_resolution
+            path_x = c[0]
+            path_y = c[1]
+            #print(path_x, path_y)
+
+            pose = PoseStamped()
+            #pose.header.frame_id = 'map' 
+            pose.pose.position.x = path_x
+            pose.pose.position.y = path_y
+            rviz_path.poses.append(pose)
+
+        path_pub.publish(rviz_path)
+        print(path)
+        print("goal:", pp.x_target_grid, pp.y_target_grid)
 
     def new_start(self, point):
         self.x_start_odom = point[0]
@@ -261,12 +298,14 @@ if __name__ == '__main__':
     print("path planner started")
 
     pp = PathPlanner()
+    rospy.Subscriber('move_base_simple/goal', PoseStamped, pp.update_target)
     rospy.Subscriber("/maze_map_node/map", OccupancyGrid, pp.mapCallback)
     #rospy.Subscriber("/robot_odom", Odometry, pp.odomCallback)
     path_pub = rospy.Publisher('/aPath', Path, queue_size=10)
 
     time.sleep(3)
 
+    '''
     pp.new_start([0.2, 0.2])
     pp.new_target([2.2, 0.8])
     path, visited = pp.A_star()
@@ -296,6 +335,7 @@ if __name__ == '__main__':
 
     print(path)
     print("goal:", pp.x_target_grid, pp.y_target_grid)
+    '''
 
     '''
     path_x = [c[0] for c in path]

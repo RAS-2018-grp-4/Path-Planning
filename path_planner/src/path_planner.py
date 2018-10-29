@@ -58,6 +58,10 @@ class PathPlanner():
         self.x_target_grid = 0 # [1]
         self.y_target_grid = 0 # [1]
 
+    def Main(self):
+        while not rospy.is_shutdown():
+            rate.sleep()
+
     def mapCallback(self, msg):
         self.map_width = msg.info.width
         self.map_height = msg.info.height
@@ -67,13 +71,13 @@ class PathPlanner():
     def add_to_map(self, x, y, val):
         self.map[x + y*self.map_width] = val
 
-    '''
     def odomCallback(self, msg):
-        self.x_start_odom = msg.pose.pose.position.x
-        self.y_start_odom = msg.pose.pose.position.y
+        #self.path_x.append(path[i].pose.position.y -0.2)
+        #self.path_y.append(-path[i].pose.position.x + 0.2)
+        self.x_start_odom = -msg.pose.pose.position.y + 0.2
+        self.y_start_odom = msg.pose.pose.position.x + 0.2
         self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
         self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
-    '''
 
     def new_start(self, point):
         self.x_start_odom = point[0]
@@ -93,28 +97,31 @@ class PathPlanner():
         return status
 
     def update_target(self, msg):
+        print("new target aquired")
         point = (msg.pose.position.x, msg.pose.position.y)
         self.new_target(point)
         self.execute_planner()
  
     def execute_planner(self):
-        self.new_start([0.2, 0.2])
+        #self.new_start([0.2, 0.2])
         #pp.new_target([2.2, 0.8])
+
+        print(self.x_start_grid, self.y_start_grid)
         path, visited = self.A_star()
         print(path)
 
-        path = self.smooth_path(path)
-        print(path)
+        #path = self.smooth_path(path)
+        #print(path)
 
         # construct the path
         rviz_path = Path()
         rviz_path.header.frame_id = 'map' 
 
         for c in path:
-            #path_x = c[0]*pp.map_resolution
-            #path_y = c[1]*pp.map_resolution
-            path_x = c[0]
-            path_y = c[1]
+            path_x = c[0]*pp.map_resolution
+            path_y = c[1]*pp.map_resolution
+            #path_x = c[0]
+            #path_y = c[1]
 
             pose = PoseStamped()
             #pose.header.frame_id = 'map' 
@@ -131,6 +138,7 @@ class PathPlanner():
         return h
 
     def A_star(self):
+        print("hello")
         # environment bounds [m]
         xlb = 0
         xub = self.map_width
@@ -296,12 +304,16 @@ if __name__ == '__main__':
     print("path planner started")
 
     pp = PathPlanner()
-    rospy.Subscriber('move_base_simple/goal', PoseStamped, pp.update_target)
+    rospy.Subscriber('/move_base_simple/goal', PoseStamped, pp.update_target)
     rospy.Subscriber("/maze_map_node/map", OccupancyGrid, pp.mapCallback)
-    #rospy.Subscriber("/robot_odom", Odometry, pp.odomCallback)
+    rospy.Subscriber("/robot_odom", Odometry, pp.odomCallback)
     path_pub = rospy.Publisher('/aPath', Path, queue_size=10)
 
-    time.sleep(3)
+    time.sleep(2)
+    #pp.new_start([0.2, 0.2])
+    
+
+    pp.Main()
 
     '''
     pp.new_start([0.2, 0.2])

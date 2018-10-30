@@ -68,18 +68,15 @@ class PathPlanner():
         self.map = msg.data
         self.map_resolution = msg.info.resolution
 
-    def add_to_map(self, x, y, val):
-        self.map[x + y*self.map_width] = val
-
     def odomCallback(self, msg):
-        #self.path_x.append(path[i].pose.position.y -0.2)
-        #self.path_y.append(-path[i].pose.position.x + 0.2)
+        # current position as starting position
         self.x_start_odom = -msg.pose.pose.position.y + 0.2
         self.y_start_odom = msg.pose.pose.position.x + 0.2
         self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
         self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
 
     def new_start(self, point):
+        # manual starting position
         self.x_start_odom = point[0]
         self.y_start_odom = point[1]
         self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
@@ -103,12 +100,11 @@ class PathPlanner():
         self.execute_planner()
  
     def execute_planner(self):
-        #self.new_start([0.2, 0.2])
-        #pp.new_target([2.2, 0.8])
-
-        print(self.x_start_grid, self.y_start_grid)
         path, visited = self.A_star()
-        print(path)
+
+        print("starting cell:", self.x_start_grid, self.y_start_grid)
+        print("path:", path)
+
 
         #path = self.smooth_path(path)
         #print(path)
@@ -128,10 +124,9 @@ class PathPlanner():
             pose.pose.position.x = path_x
             pose.pose.position.y = path_y
             rviz_path.poses.append(pose)
-
         path_pub.publish(rviz_path)
-        print(path)
-        print("goal:", self.x_target_grid, self.y_target_grid)
+
+        print("goal cell:", self.x_target_grid, self.y_target_grid)
 
     def euclidian_dist(self, x, y, xt, yt):
         h = np.sqrt((x - xt)**2 + (y - yt)**2) 
@@ -192,9 +187,9 @@ class PathPlanner():
                 path = []
                 current = current_node
                 while current is not None:
-                    path.append((current.x, current.y))    # append the path
+                    path.append((current.x, current.y))         # append the path
                     current = current.parent
-                return path[::-1], visited[::-1]               # retrun the path (in reversed order)
+                return path[::-1], visited[::-1]                # retrun the path (in reversed order)
 
             # generate new children (apply actions to the current best node)
             children = []
@@ -228,10 +223,9 @@ class PathPlanner():
 
                 # generate the f, g, h metrics
                 move_cost = np.sqrt(child.movement[0]**2 + child.movement[1]**2)
-
-                child.g = current_node.g + move_cost*0.2                                        # path length penalty
-                child.h = self.euclidian_dist(child.x, child.y, end_node.x, end_node.y)  # euclidian distance
-                child.f = child.g + child.h                               # total cost
+                child.g = current_node.g + move_cost*0.2                                # path length penalty
+                child.h = self.euclidian_dist(child.x, child.y, end_node.x, end_node.y) # euclidian distance
+                child.f = child.g + child.h                                             # total cost
 
                 # check if child is already in the open list and compare cost
                 for open_node in alive_list:
@@ -252,9 +246,11 @@ class PathPlanner():
         idx = 0
         for c in path[1:]:
             free_path, collision = self.raytrace(start, c)
-            if collision:
-                path_x = np.linspace(start[0]*self.map_resolution, free_path[-1][0]*self.map_resolution, num=10, endpoint=True)
-                path_y = np.linspace(start[1]*self.map_resolution, free_path[-1][1]*self.map_resolution, num=10, endpoint=True)
+            if collision:       
+                ray_length = np.sqrt((free_path[0][0] - free_path[-1][0])**2 + (free_path[0][1] - free_path[-1][1])**2)
+                
+                path_x = np.linspace(start[0]*self.map_resolution, free_path[-1][0]*self.map_resolution, num=ray_length*3, endpoint=True)
+                path_y = np.linspace(start[1]*self.map_resolution, free_path[-1][1]*self.map_resolution, num=ray_length*3, endpoint=True)
                 for i in range(10):
                     smooth_path.append((path_x[i], path_y[i]))
                 idx = idx + len(free_path)

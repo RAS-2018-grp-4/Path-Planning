@@ -103,10 +103,10 @@ class PathPlanner():
         path, visited = self.A_star()
 
         print("starting cell:", self.x_start_grid, self.y_start_grid)
-        print("path:", path)
+        print("path (no smoothing):", path)
 
         path = self.smooth_path(path)
-        #print(path)
+        print("path (with smoothing)", path)
 
         # construct the path
         rviz_path = Path()
@@ -240,6 +240,8 @@ class PathPlanner():
 
     def smooth_path(self, path):
         smooth_path = []
+        path_x = []
+        path_y = []
 
         free_path = []
         ray_length = 2
@@ -301,8 +303,7 @@ class PathPlanner():
                 # update ray start to the last_ok grid cell
                 start = last_ok
         '''
-
-        print("last free", free_path)
+        
         path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
         path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
         for i in range(ray_length):

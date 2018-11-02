@@ -249,6 +249,8 @@ class PathPlanner():
         last_ok = path[0] # last reached grid cell on the original path
         start = path[0] # start grid to search 
 
+
+        '''
         idx = 1
         while True:
             if idx >= len(path) - 1:
@@ -288,9 +290,9 @@ class PathPlanner():
                 # append the straight line
                 for i in range(ray_length):
                     smooth_path.append((path_x[i], path_y[i]))
-            
 
         '''
+            
         for c in path[1:]:
             free_path, collision = self.raytrace(start, c)
 
@@ -308,7 +310,7 @@ class PathPlanner():
 
                 # update ray start to the last_ok grid cell
                 start = last_ok
-        '''
+  
             
         return smooth_path
 

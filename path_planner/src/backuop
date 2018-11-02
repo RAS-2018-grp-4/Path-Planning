@@ -1,0 +1,48 @@
+    def smooth_path(self, path):
+
+        # FIX!!!!!!!!!!!!!!!!!!!!!!!!111
+        smooth_path = []
+        start = path[0]
+        last_ok = path[0]
+
+        smoothing = True
+        lookahead_idx = 1
+        while smoothing:
+            free_path, collision = self.raytrace(start, path[lookahead_idx])
+            print(start, path[lookahead_idx])
+            if not collision:
+                print(free_path)
+                last_ok = path[lookahead_idx]
+            elif collision:    
+                ray_length = 2 + int(np.sqrt((start[0] - start[1])**2 + (last_ok[0] - last_ok[1])**2))
+
+                print("path len", len(free_path)) 
+                if len(free_path) <= 2:
+                    # create a linspace
+                    print(start[0], path[lookahead_idx][0])
+                    path_x = np.linspace(start[0]*self.map_resolution, path[lookahead_idx][0]*self.map_resolution, num=ray_length*3, endpoint=True)
+                    path_y = np.linspace(start[1]*self.map_resolution, path[lookahead_idx][1]*self.map_resolution, num=ray_length*3, endpoint=True)
+                    for i in range(ray_length*3):
+                        smooth_path.append((path_x[i], path_y[i]))   
+
+                    start = (path[lookahead_idx][0], path[lookahead_idx][1])
+                    lookahead_idx = path.index(start) 
+                else:
+                               
+                    # create a linspace
+                    path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length*3, endpoint=True)
+                    path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length*3, endpoint=True)
+                    for i in range(ray_length*3):
+                        smooth_path.append((path_x[i], path_y[i]))
+
+                    start = (last_ok[0], last_ok[1])
+                    lookahead_idx = path.index(start)
+
+            lookahead_idx = lookahead_idx + 1
+            
+                
+            if lookahead_idx == len(path)-1:
+                smoothing = False
+                
+        print("smooth path", smooth_path)
+        return smooth_path

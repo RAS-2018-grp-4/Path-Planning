@@ -105,8 +105,7 @@ class PathPlanner():
         print("starting cell:", self.x_start_grid, self.y_start_grid)
         print("path:", path)
 
-
-        #path = self.smooth_path(path)
+        path = self.smooth_path(path)
         #print(path)
 
         # construct the path
@@ -114,10 +113,10 @@ class PathPlanner():
         rviz_path.header.frame_id = 'map' 
 
         for c in path:
-            path_x = c[0]*pp.map_resolution
-            path_y = c[1]*pp.map_resolution
-            #path_x = c[0]
-            #path_y = c[1]
+            #path_x = c[0]*pp.map_resolution
+            #path_y = c[1]*pp.map_resolution
+            path_x = c[0]
+            path_y = c[1]
 
             pose = PoseStamped()
             #pose.header.frame_id = 'map' 
@@ -223,7 +222,7 @@ class PathPlanner():
 
                 # generate the f, g, h metrics
                 move_cost = np.sqrt(child.movement[0]**2 + child.movement[1]**2)
-                child.g = current_node.g + move_cost*0.2                                # path length penalty
+                child.g = current_node.g + move_cost*0.3                                # path length penalty
                 child.h = self.euclidian_dist(child.x, child.y, end_node.x, end_node.y) # euclidian distance
                 child.f = child.g + child.h                                             # total cost
 
@@ -240,21 +239,30 @@ class PathPlanner():
                 alive_list.append(child)
 
     def smooth_path(self, path):
+        # FIX!!!!!!!!!!!!!!!!!!!!!!!!111
         smooth_path = []
 
+        free_path = []
+        ray_length = 2
+
         start = path[0]
-        idx = 0
         for c in path[1:]:
             free_path, collision = self.raytrace(start, c)
-            if collision:       
-                ray_length = np.sqrt((free_path[0][0] - free_path[-1][0])**2 + (free_path[0][1] - free_path[-1][1])**2)
-                
+
+            ray_length = 2 + int(np.sqrt((free_path[0][0] - free_path[-1][0])**2 + (free_path[0][1] - free_path[-1][1])**2))
+            if collision:          
                 path_x = np.linspace(start[0]*self.map_resolution, free_path[-1][0]*self.map_resolution, num=ray_length*3, endpoint=True)
                 path_y = np.linspace(start[1]*self.map_resolution, free_path[-1][1]*self.map_resolution, num=ray_length*3, endpoint=True)
-                for i in range(10):
+                for i in range(ray_length*3):
                     smooth_path.append((path_x[i], path_y[i]))
-                idx = idx + len(free_path)
                 start = c
+
+        print("last free", free_path)
+        path_x = np.linspace(start[0]*self.map_resolution, free_path[-1][0]*self.map_resolution, num=ray_length*3, endpoint=True)
+        path_y = np.linspace(start[1]*self.map_resolution, free_path[-1][1]*self.map_resolution, num=ray_length*3, endpoint=True)
+        for i in range(ray_length*3):
+            smooth_path.append((path_x[i], path_y[i]))
+            
         
         return smooth_path
 
@@ -277,7 +285,7 @@ class PathPlanner():
 
         traversed = []
         for i in range(0, int(n)):      
-            if self.obstacle_collision(int(x), int(y)) and i >= 2:
+            if self.obstacle_collision(int(x), int(y)):
                 return traversed, True
             traversed.append((int(x), int(y)))
 
@@ -286,13 +294,13 @@ class PathPlanner():
                 error -= dy
             else:
                 if error == 0:
-                    if self.obstacle_collision(int(x + x_inc), int(y)) and i >= 2:
+                    if self.obstacle_collision(int(x + x_inc), int(y)):
                         return traversed, True
                     traversed.append((int(x + x_inc), int(y)))
                 y += y_inc
                 error += dx
 
-        return None, False
+        return traversed, False
 
 
 

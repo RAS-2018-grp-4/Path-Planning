@@ -262,15 +262,25 @@ class PathPlanner():
                 idx = idx + 1
 
             # if collision draw a straight line from the current start to the last_ok grid cell
-            if collision:     
-                ray_length = 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))     
-                path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
-                path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
+            if collision: 
+                ray_length = 2 + 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))      
+                if len(free_path) == 1:
+                    path_x = np.linspace(start[0]*self.map_resolution, path[idx][0]*self.map_resolution, num=ray_length, endpoint=True)
+                    path_y = np.linspace(start[1]*self.map_resolution, path[idx][1]*self.map_resolution, num=ray_length, endpoint=True)
+                    # update ray start to the last grid cell
+                    start = path[idx]
+                    idx = idx + 1
+
+                elif len(free_path) > 1:     
+                    path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
+                    path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
+                    # update ray start to the last_ok grid cell
+                    start = last_ok
+
                 for i in range(ray_length):
                     smooth_path.append((path_x[i], path_y[i]))
 
-                # update ray start to the last_ok grid cell
-                start = last_ok
+                    
 
         '''
         for c in path[1:]:

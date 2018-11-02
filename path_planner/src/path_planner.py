@@ -311,6 +311,11 @@ class PathPlanner():
                 # update ray start to the last_ok grid cell
                 start = last_ok
   
+        # add the last bit of the ray trace
+        path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
+        path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
+        for i in range(ray_length):
+            smooth_path.append((path_x[i], path_y[i]))
             
         return smooth_path
 

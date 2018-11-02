@@ -239,31 +239,37 @@ class PathPlanner():
                 alive_list.append(child)
 
     def smooth_path(self, path):
-        # FIX!!!!!!!!!!!!!!!!!!!!!!!!111
         smooth_path = []
 
         free_path = []
         ray_length = 2
 
-        start = path[0]
+        last_ok = path[0] # last reached grid cell on the original path
+        start = path[0] # start grid to search from
         for c in path[1:]:
             free_path, collision = self.raytrace(start, c)
 
-            ray_length = 2 + int(np.sqrt((free_path[0][0] - free_path[-1][0])**2 + (free_path[0][1] - free_path[-1][1])**2))
-            if collision:          
-                path_x = np.linspace(start[0]*self.map_resolution, free_path[-1][0]*self.map_resolution, num=ray_length*3, endpoint=True)
-                path_y = np.linspace(start[1]*self.map_resolution, free_path[-1][1]*self.map_resolution, num=ray_length*3, endpoint=True)
-                for i in range(ray_length*3):
+            if not collision: 
+                # last reached grid cell (without collision)
+                last_ok = c 
+
+            # if collision draw a straight line from the current start to the last_ok grid cell
+            if collision:     
+                ray_length = 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))     
+                path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
+                path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
+                for i in range(ray_length):
                     smooth_path.append((path_x[i], path_y[i]))
-                start = c
+
+                # update ray start to the last_ok grid cell
+                start = last_ok
 
         print("last free", free_path)
-        path_x = np.linspace(start[0]*self.map_resolution, free_path[-1][0]*self.map_resolution, num=ray_length*3, endpoint=True)
-        path_y = np.linspace(start[1]*self.map_resolution, free_path[-1][1]*self.map_resolution, num=ray_length*3, endpoint=True)
-        for i in range(ray_length*3):
+        path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
+        path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
+        for i in range(ray_length):
             smooth_path.append((path_x[i], path_y[i]))
             
-        
         return smooth_path
 
     def raytrace(self, start, end):

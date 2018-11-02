@@ -252,6 +252,9 @@ class PathPlanner():
                 alive_list.append(child)
 
     def smooth_path(self, path):
+        #####################
+        # to do: 1) remove spurious "reverse lines" 2) fix evenly spaced path dots
+        #####################
         smooth_path = []
 
         path_x = []
@@ -289,11 +292,14 @@ class PathPlanner():
             # if collision draw a straight line from the current start to the last_ok grid cell
             else:   
                 if len(free_path) <= 2:
+
+                    ray_length = 2 + 3*len(free_path)
+
                     path_x = np.linspace(start[0]*self.map_resolution, path[idx][0]*self.map_resolution, num=ray_length, endpoint=True)
                     path_y = np.linspace(start[1]*self.map_resolution, path[idx][1]*self.map_resolution, num=ray_length, endpoint=True)
                     # update ray start to the last grid cell
                     start = path[idx]
-                    idx = idx + 1
+                    idx = idx + len(free_path)
 
                 elif len(free_path) > 2:     
                     path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
@@ -331,7 +337,19 @@ class PathPlanner():
         for i in range(ray_length):
             smooth_path.append((path_x[i], path_y[i]))
         '''
-        return smooth_path
+
+        n_window = 30
+        smooth_path_final = smooth_path
+
+        for i in range(n_window/2+1, len(smooth_path) - n_window - 1):
+            sumx = 0
+            sumy = 0
+            for j in range(-n_window/2,n_window/2):
+                sumx = sumx + smooth_path[i+j][0]
+                sumy = sumy + smooth_path[i+j][1]
+            smooth_path_final[i] = (sumx/n_window, sumy/n_window)
+     
+        return smooth_path_final
 
     def raytrace(self, start, end):
         (start_x, start_y) = start

@@ -105,14 +105,14 @@ class PathPlanner():
         print("starting cell:", self.x_start_grid, self.y_start_grid)
         print("path (no smoothing):", path)
 
-        path = self.smooth_path(path)
+        path_smooth = self.smooth_path(path)
         print("path (with smoothing)", path)
 
         # construct the path
         rviz_path = Path()
         rviz_path.header.frame_id = 'map' 
 
-        for c in path:
+        for c in path_smooth:
             #path_x = c[0]*pp.map_resolution
             #path_y = c[1]*pp.map_resolution
             path_x = c[0]
@@ -123,6 +123,19 @@ class PathPlanner():
             pose.pose.position.x = path_x
             pose.pose.position.y = path_y
             rviz_path.poses.append(pose)
+
+        '''
+        for c in path:
+            path_x = c[0]*pp.map_resolution
+            path_y = c[1]*pp.map_resolution
+
+
+            pose = PoseStamped()
+            #pose.header.frame_id = 'map' 
+            pose.pose.position.x = path_x
+            pose.pose.position.y = path_y
+            rviz_path.poses.append(pose)
+        '''
         path_pub.publish(rviz_path)
 
         print("goal cell:", self.x_target_grid, self.y_target_grid)
@@ -250,10 +263,11 @@ class PathPlanner():
         start = path[0] # start grid to search 
 
 
-        '''
+        counter = 0
         idx = 1
         while True:
-            if idx >= len(path) - 1:
+            counter = counter + 1
+            if idx >= len(path) - 1 or counter > len(path)*4:
                 # add the last bit of the ray trace
                 path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
                 path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
@@ -269,19 +283,19 @@ class PathPlanner():
             if not collision:      
                 # last reached grid cell (without collision)
                 last_ok = path[idx]
-                ray_length = 3 + 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))    
+                ray_length = 2 + 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))    
                 idx = idx + 1
 
             # if collision draw a straight line from the current start to the last_ok grid cell
             else:   
-                if len(free_path) == 1:
+                if len(free_path) <= 2:
                     path_x = np.linspace(start[0]*self.map_resolution, path[idx][0]*self.map_resolution, num=ray_length, endpoint=True)
                     path_y = np.linspace(start[1]*self.map_resolution, path[idx][1]*self.map_resolution, num=ray_length, endpoint=True)
                     # update ray start to the last grid cell
                     start = path[idx]
                     idx = idx + 1
 
-                elif len(free_path) > 1:     
+                elif len(free_path) > 2:     
                     path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
                     path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
                     # update ray start to the last_ok grid cell
@@ -291,8 +305,8 @@ class PathPlanner():
                 for i in range(ray_length):
                     smooth_path.append((path_x[i], path_y[i]))
 
+        
         '''
-            
         for c in path[1:]:
             free_path, collision = self.raytrace(start, c)
 
@@ -302,7 +316,7 @@ class PathPlanner():
 
             # if collision draw a straight line from the current start to the last_ok grid cell
             if collision:     
-                ray_length = 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))     
+                ray_length = 3 + 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))     
                 path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
                 path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
                 for i in range(ray_length):
@@ -316,7 +330,7 @@ class PathPlanner():
         path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
         for i in range(ray_length):
             smooth_path.append((path_x[i], path_y[i]))
-            
+        '''
         return smooth_path
 
     def raytrace(self, start, end):

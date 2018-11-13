@@ -69,11 +69,26 @@ class PathPlanner():
         self.map_resolution = msg.info.resolution
 
     def odomCallback(self, msg):
+        pass
+        '''
         # current position as starting position
-        self.x_start_odom = -msg.pose.pose.position.y + 0.2
-        self.y_start_odom = msg.pose.pose.position.x + 0.2
+        self.x_start_odom = msg.pose.pose.position.x + 0.2
+        self.y_start_odom = msg.pose.pose.position.y + 0.2
         self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
         self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
+        #print(self.x_start_grid, self.y_start_grid)
+        '''
+
+    def filterCallback(self, msg):
+        #pass
+        #'''
+        # current position as starting position
+        self.x_start_odom = msg.pose.pose.position.x + 0.2
+        self.y_start_odom = msg.pose.pose.position.y + 0.2
+        self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
+        self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
+        #print(self.x_start_grid, self.y_start_grid)
+        #'''
 
     def new_start(self, point):
         # manual starting position
@@ -144,6 +159,19 @@ class PathPlanner():
         h = np.sqrt((x - xt)**2 + (y - yt)**2) 
         return h
 
+    def get_closest_free_space(self, x0, y0):
+        print("getting new grid cell")
+        free_cell = False
+        r = 1
+        while not free_cell:
+            for motion in [(-r, 0), (0, r), (r, 0), (0, -r), (-r, r), (r, r), (r, -r), (-r, -r)]:
+                if self.obstacle_collision(x0 + motion[0], y0 + motion[0]):
+                    continue
+                else:
+                    print("grid cell fix DONE")
+                    return (x0 + motion[0], y0 + motion[0])
+            r = r + 1
+
     def A_star(self):
         print("hello")
         # environment bounds [m]
@@ -156,9 +184,17 @@ class PathPlanner():
         x0 = self.x_start_grid
         y0 = self.y_start_grid
         
+        # if starting position not in free space, adjust the starting node
+        if self.obstacle_collision(x0, y0):
+            x0, y0 = self.get_closest_free_space(x0, y0)
+        
         # target coordinates [m]
         xt = self.x_target_grid
         yt = self.y_target_grid
+
+        # if goal position not in free space, adjust the goal node
+        if self.obstacle_collision(xt, yt):
+            xt, yt = self.get_closest_free_space(xt, yt)
 
         # initialize start and end node
         start_node = Node(None, (x0, y0))
@@ -251,6 +287,12 @@ class PathPlanner():
                 # if the child is neither in the closed list nor open list, add it to the open list
                 alive_list.append(child)
 
+        # if no path found
+        path = []
+        current = current_node
+        print("NO PATH FOUND!")
+        return [], []               # retrun the path (in reversed order)
+
     def smooth_path(self, path):
         #####################
         # to do: 1) remove spurious "reverse lines" 2) fix evenly spaced path dots
@@ -286,15 +328,12 @@ class PathPlanner():
             if not collision:      
                 # last reached grid cell (without collision)
                 last_ok = path[idx]
-                ray_length = 2 + 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))    
+                ray_length = 3*len(free_path)
                 idx = idx + 1
 
             # if collision draw a straight line from the current start to the last_ok grid cell
             else:   
-                if len(free_path) <= 2:
-
-                    ray_length = 2 + 3*len(free_path)
-
+                if len(free_path) <= 2:                 
                     path_x = np.linspace(start[0]*self.map_resolution, path[idx][0]*self.map_resolution, num=ray_length, endpoint=True)
                     path_y = np.linspace(start[1]*self.map_resolution, path[idx][1]*self.map_resolution, num=ray_length, endpoint=True)
                     # update ray start to the last grid cell
@@ -338,7 +377,8 @@ class PathPlanner():
             smooth_path.append((path_x[i], path_y[i]))
         '''
 
-        n_window = 30
+        # smooth the path with a averaging window
+        n_window = 10
         smooth_path_final = smooth_path
 
         for i in range(n_window/2+1, len(smooth_path) - n_window - 1):
@@ -395,14 +435,16 @@ if __name__ == '__main__':
     pp = PathPlanner()
     rospy.Subscriber('/move_base_simple/goal', PoseStamped, pp.update_target)
     rospy.Subscriber("/maze_map_node/map", OccupancyGrid, pp.mapCallback)
-    rospy.Subscriber("/robot_odom", Odometry, pp.odomCallback)
+    #rospy.Subscriber("/robot_odom", Odometry, pp.odomCallback)
+    rospy.Subscriber("/robot_filter", Odometry, pp.filterCallback)
     path_pub = rospy.Publisher('/aPath', Path, queue_size=10)
 
     time.sleep(2)
     #pp.new_start([0.2, 0.2])
-    
-
+    #pp.new_target([2.2, 0.8])
+    #pp.execute_planner()
     pp.Main()
+    
 
     '''
     pp.new_start([0.2, 0.2])

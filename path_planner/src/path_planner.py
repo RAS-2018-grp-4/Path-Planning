@@ -16,6 +16,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
 from math import cos, sin, atan2, fabs, sqrt
 import numpy as np
 
+
 PoseStamped
 
 rospy.init_node('path_planner_node', anonymous=True)
@@ -45,6 +46,8 @@ class PathPlanner():
         self.map_width = 0
         self.map_height = 0
         self.map_resolution = 0
+        self.map_minx = 0
+        self.map_miny = 0
 
         # odometry and grid position
         self.x_start_odom = 0 # [m]
@@ -67,6 +70,9 @@ class PathPlanner():
         self.map_height = msg.info.height
         self.map = msg.data
         self.map_resolution = msg.info.resolution
+        self.map_minx = msg.info.origin.position.x
+        self.map_miny = msg.info.origin.position.y
+        #print(self.map_minx, self.map_miny)
 
     def odomCallback(self, msg):
         pass
@@ -83,10 +89,12 @@ class PathPlanner():
         #pass
         #'''
         # current position as starting position
-        self.x_start_odom = msg.pose.pose.position.x + 0.2
-        self.y_start_odom = msg.pose.pose.position.y + 0.2
-        self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
-        self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
+        
+        self.x_start_odom = msg.pose.pose.position.x# + 0.2
+        self.y_start_odom = msg.pose.pose.position.y# + 0.2
+
+        self.x_start_grid = (int)((self.x_start_odom - self.map_minx)/self.map_resolution)
+        self.y_start_grid = (int)((self.y_start_odom - self.map_miny)/self.map_resolution)
         #print(self.x_start_grid, self.y_start_grid)
         #'''
 
@@ -94,14 +102,14 @@ class PathPlanner():
         # manual starting position
         self.x_start_odom = point[0]
         self.y_start_odom = point[1]
-        self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
-        self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
+        self.x_start_grid = (int)((self.x_start_odom - self.map_minx)/self.map_resolution)
+        self.y_start_grid = (int)((self.y_start_odom - self.map_miny)/self.map_resolution)
 
     def new_target(self, point):
         self.x_target_odom = point[0]
         self.y_target_odom = point[1]
-        self.x_target_grid = (int)(self.x_target_odom/self.map_resolution) 
-        self.y_target_grid = (int)(self.y_target_odom/self.map_resolution)
+        self.x_target_grid = (int)((self.x_target_odom - self.map_minx)/self.map_resolution) 
+        self.y_target_grid = (int)((self.y_target_odom - self.map_miny)/self.map_resolution)
 
     def obstacle_collision(self, x, y):
         status = False
@@ -193,8 +201,8 @@ class PathPlanner():
         yt = self.y_target_grid
 
         # if goal position not in free space, adjust the goal node
-        if self.obstacle_collision(xt, yt):
-            xt, yt = self.get_closest_free_space(xt, yt)
+        #if self.obstacle_collision(xt, yt):
+        #    xt, yt = self.get_closest_free_space(xt, yt)
 
         # initialize start and end node
         start_node = Node(None, (x0, y0))
@@ -240,8 +248,19 @@ class PathPlanner():
                 return path[::-1], visited[::-1]                # retrun the path (in reversed order)
 
             # generate new children (apply actions to the current best node)
+            motion_long = [(-2, 0), (0, 2), (2, 0), (0, -2), (-2, 2), (2, 2), (2, -2), (-2, -2)]
+            motion_short = [(-1, 0), (0, 1), (1, 0), (0, -1), (-1, 1), (1, 1), (1, -1), (-1, -1)]
+
+            motions = []
+            if self.euclidian_dist(current_node.x, current_node.x, end_node.x, end_node.y) <= 4:
+                motions = motion_short
+            else:
+                motions = motion_long
+            motions = motion_short
+
+
             children = []
-            for motion in [(-1, 0), (0, 1), (1, 0), (0, -1), (-1, 1), (1, 1), (1, -1), (-1, -1)]:
+            for motion in motions:
                 # get the new node state
                 node_state = (current_node.x + motion[0], current_node.y + motion[1]) # simulate the motion
 
@@ -250,8 +269,12 @@ class PathPlanner():
                     continue
 
                 # check that the position is not on obstacle
-                if self.obstacle_collision(node_state[0], node_state[1]):
-                    continue
+                #print(node_state[0], node_state[1], end_node.x, end_node.y)
+                if self.euclidian_dist(node_state[0], node_state[1], end_node.x, end_node.y) <= 2: 
+                    print("close to goal, let planner go into yellow area")
+                else:
+                    if self.obstacle_collision(node_state[0], node_state[1]):
+                        continue
 
                 # if the criteria above are fulfilled, create and append the node
                 new_node = Node(current_node, node_state, motion)
@@ -314,8 +337,8 @@ class PathPlanner():
             counter = counter + 1
             if idx >= len(path) - 1 or counter > len(path)*4:
                 # add the last bit of the ray trace
-                path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
-                path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
+                path_x = np.linspace(start[0]*self.map_resolution + self.map_minx, last_ok[0]*self.map_resolution + self.map_minx, num=ray_length, endpoint=True)
+                path_y = np.linspace(start[1]*self.map_resolution + self.map_miny, last_ok[1]*self.map_resolution + self.map_miny, num=ray_length, endpoint=True)
                 for i in range(ray_length):
                     smooth_path.append((path_x[i], path_y[i]))
 
@@ -334,15 +357,15 @@ class PathPlanner():
             # if collision draw a straight line from the current start to the last_ok grid cell
             else:   
                 if len(free_path) <= 2:                 
-                    path_x = np.linspace(start[0]*self.map_resolution, path[idx][0]*self.map_resolution, num=ray_length, endpoint=True)
-                    path_y = np.linspace(start[1]*self.map_resolution, path[idx][1]*self.map_resolution, num=ray_length, endpoint=True)
+                    path_x = np.linspace(start[0]*self.map_resolution + self.map_minx, path[idx][0]*self.map_resolution + self.map_minx, num=ray_length, endpoint=True)
+                    path_y = np.linspace(start[1]*self.map_resolution + self.map_miny, path[idx][1]*self.map_resolution + self.map_miny, num=ray_length, endpoint=True)
                     # update ray start to the last grid cell
                     start = path[idx]
                     idx = idx + len(free_path)
 
                 elif len(free_path) > 2:     
-                    path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
-                    path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
+                    path_x = np.linspace(start[0]*self.map_resolution + self.map_minx, last_ok[0]*self.map_resolution + self.map_minx, num=ray_length, endpoint=True)
+                    path_y = np.linspace(start[1]*self.map_resolution + self.map_miny, last_ok[1]*self.map_resolution + self.map_miny, num=ray_length, endpoint=True)
                     # update ray start to the last_ok grid cell
                     start = last_ok
 
@@ -410,7 +433,7 @@ class PathPlanner():
 
         traversed = []
         for i in range(0, int(n)):      
-            if self.obstacle_collision(int(x), int(y)):
+            if self.obstacle_collision(int(x), int(y)):# and self.euclidian_dist(int(x), int(y), self.x_target_grid, self.y_target_grid) >= 2:
                 return traversed, True
             traversed.append((int(x), int(y)))
 
@@ -419,7 +442,7 @@ class PathPlanner():
                 error -= dy
             else:
                 if error == 0:
-                    if self.obstacle_collision(int(x + x_inc), int(y)):
+                    if self.obstacle_collision(int(x + x_inc), int(y)):# and self.euclidian_dist(int(x), int(y), self.x_target_grid, self.y_target_grid) >= 2:
                         return traversed, True
                     traversed.append((int(x + x_inc), int(y)))
                 y += y_inc

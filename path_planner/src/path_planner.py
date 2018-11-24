@@ -15,7 +15,7 @@ from std_msgs.msg import String
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
 from math import cos, sin, atan2, fabs, sqrt
 import numpy as np
-
+import heapq
 
 PoseStamped
 
@@ -37,6 +37,9 @@ class Node():
 
     def __eq__(self, other):
         return (self.x == other.x and self.y == other.y)
+
+    def __lt__(self, other):
+        return self.f < other.f
 
 
 class PathPlanner():
@@ -213,13 +216,16 @@ class PathPlanner():
         dead_list = []
 
         # append the start node to the open list
-        alive_list.append(start_node)
+        # alive_list.append(start_node) /////////////////////////////////////////////////////////////////////////////////////////////
+        heapq.heappush(alive_list, start_node)
 
         visited = []
         iter = 0
         # run algorithm until the end node (target state) is found
         while len(alive_list) > 0:
             iter = iter + 1
+
+            '''
             # get the current node (first item in list)
             current_node = alive_list[0]
             current_idx = 0
@@ -229,12 +235,15 @@ class PathPlanner():
                 if item.f < current_node.f:
                     current_node = item
                     current_idx = idx
-                
+            ''' 
+            current_node = alive_list[0]
+
             #print("new node at", current_node.x, current_node.y)
             visited.append((current_node.x, current_node.y))
 
             # remove the current node from the open list, and add it to the closed list
-            alive_list.pop(current_idx)
+            #alive_list.pop(current_idx) /////////////////////////////////////////////////////////////////////////////////////////////
+            heapq.heappop(alive_list)
             dead_list.append(current_node)
 
 
@@ -308,7 +317,8 @@ class PathPlanner():
                     continue # skip this child
 
                 # if the child is neither in the closed list nor open list, add it to the open list
-                alive_list.append(child)
+                #alive_list.append(child) //////////////////////////////////////////////////////////////////////////////////////////////////
+                heapq.heappush(alive_list, child)
 
         # if no path found
         path = []

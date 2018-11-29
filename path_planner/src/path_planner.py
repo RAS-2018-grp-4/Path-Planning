@@ -2,7 +2,7 @@
 
 import numpy as np
 
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import rospy
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import MapMetaData
@@ -83,14 +83,14 @@ class PathPlanner():
 
     def odomCallback(self, msg):
         pass
-        '''
+        #'''
         # current position as starting position
         self.x_start_odom = msg.pose.pose.position.x + 0.2
         self.y_start_odom = msg.pose.pose.position.y + 0.2
-        self.x_start_grid = (int)(self.x_start_odom/self.map_resolution)
-        self.y_start_grid = (int)(self.y_start_odom/self.map_resolution)
+        self.x_start_grid = (int)((self.x_start_odom- self.map_minx)/self.map_resolution)
+        self.y_start_grid = (int)((self.y_start_odom- self.map_miny)/self.map_resolution)
         #print(self.x_start_grid, self.y_start_grid)
-        '''
+        #'''
 
     def filterCallback(self, msg):
         #pass
@@ -159,7 +159,14 @@ class PathPlanner():
             pose.pose.position.x = path_x
             pose.pose.position.y = path_y
             rviz_path.poses.append(pose)
+
+            #plt.plot(path_x, path_y, ".r", label="course")
+            
+            
         #'''
+        #plt.grid(True)
+        #plt.axis("equal")
+        #plt.show()
         '''
         for c in path:
             path_x = c[0]*pp.map_resolution + self.map_minx
@@ -293,7 +300,7 @@ class PathPlanner():
 
                 # check that the position is not on obstacle
                 #print(node_state[0], node_state[1], end_node.x, end_node.y)
-                if self.euclidian_dist(node_state[0], node_state[1], end_node.x, end_node.y) < 6: 
+                if self.euclidian_dist(node_state[0], node_state[1], end_node.x, end_node.y) < 5: 
                     print("close to goal, let planner go into yellow area")
                 else:
                     if self.obstacle_collision(node_state[0], node_state[1]):
@@ -306,11 +313,19 @@ class PathPlanner():
             # loop through the children and compare with already alive and dead nodes
             for child in children:
                 skip_child = False
+
+                '''
+                if child in dead_list:
+                    skip_child = True
+                    break 
+                '''
                 # check if child is on the closed list
+                #'''
                 for closed_child in dead_list:
                     if child == closed_child:
                         skip_child = True
                         break 
+                #'''
 
                 if skip_child:
                     continue # skip this child
@@ -324,10 +339,19 @@ class PathPlanner():
                 child.f = child.g + child.h + child.w                                            # total cost
 
                 # check if child is already in the open list and compare cost
+
+                '''
+                if child in alive_list:
+                    if child.g >= alive_list[alive_list.index(child)].g:
+                        skip_child = True
+                        break
+                '''
+                #'''
                 for open_node in alive_list:
                     if child == open_node and child.g >= open_node.g:
                         skip_child = True
                         break
+                #'''
 
                 if skip_child:
                     continue # skip this child
@@ -389,7 +413,7 @@ class PathPlanner():
             # if collision draw a straight line from the current start to the last_ok grid cell
             else:           
                 if ray_len == 0:  
-                    ray_length = 3               
+                    ray_length = 5               
                     path_x = np.linspace(start[0]*self.map_resolution + self.map_minx, path[idx][0]*self.map_resolution + self.map_minx, num=ray_length, endpoint=True)
                     path_y = np.linspace(start[1]*self.map_resolution + self.map_miny, path[idx][1]*self.map_resolution + self.map_miny, num=ray_length, endpoint=True)
                     # update ray start to the last grid cell
@@ -409,31 +433,6 @@ class PathPlanner():
 
                 ray_len = 0
         
-        '''
-        for c in path[1:]:
-            free_path, collision = self.raytrace(start, c)
-
-            if not collision: 
-                # last reached grid cell (without collision)
-                last_ok = c 
-
-            # if collision draw a straight line from the current start to the last_ok grid cell
-            if collision:     
-                ray_length = 3 + 3*int(np.sqrt((start[0] - start[0])**2 + (last_ok[0] - last_ok[1])**2))     
-                path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
-                path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
-                for i in range(ray_length):
-                    smooth_path.append((path_x[i], path_y[i]))
-
-                # update ray start to the last_ok grid cell
-                start = last_ok
-  
-        # add the last bit of the ray trace
-        path_x = np.linspace(start[0]*self.map_resolution, last_ok[0]*self.map_resolution, num=ray_length, endpoint=True)
-        path_y = np.linspace(start[1]*self.map_resolution, last_ok[1]*self.map_resolution, num=ray_length, endpoint=True)
-        for i in range(ray_length):
-            smooth_path.append((path_x[i], path_y[i]))
-        '''
 
         # smooth the path with a averaging window
         n_window = 20
@@ -448,6 +447,7 @@ class PathPlanner():
             smooth_path_final[i] = (sumx/n_window, sumy/n_window)
      
         print("LEN", len(smooth_path_final))
+
         return smooth_path_final
 
     def raytrace(self, start, end):
@@ -485,7 +485,6 @@ class PathPlanner():
                 error += dx
 
         return traversed, False
-
 
 
 if __name__ == '__main__':

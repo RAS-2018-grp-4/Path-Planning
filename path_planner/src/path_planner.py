@@ -17,8 +17,6 @@ from math import cos, sin, atan2, fabs, sqrt
 import numpy as np
 import heapq
 
-PoseStamped
-
 rospy.init_node('path_planner_node', anonymous=True)
 rate = rospy.Rate(1)
 
@@ -37,11 +35,17 @@ class Node():
         self.f = 0 # combined cost
 
     def __eq__(self, other):
-        return (self.x == other.x and self.y == other.y)
+        if type(other) is type(self):
+            return (self.x == other.x and self.y == other.y)
+        else:
+            return False
+        
 
     def __lt__(self, other):
-        return self.f < other.f
-
+        if type(other) is type(self):
+            return self.f < other.f
+        else:
+            return self.g < other
 
 class PathPlanner():
     def __init__(self):
@@ -65,7 +69,6 @@ class PathPlanner():
         self.x_target_grid = 0 # [1]
         self.y_target_grid = 0 # [1]
 
-        self.motion_long = [(-2, 0), (0, 2), (2, 0), (0, -2), (-2, 2), (2, 2), (2, -2), (-2, -2)]
         self.motion_short = [(-1, 0), (0, 1), (1, 0), (0, -1), (-1, 1), (1, 1), (1, -1), (-1, -1)]
 
     def Main(self):
@@ -79,31 +82,13 @@ class PathPlanner():
         self.map_resolution = msg.info.resolution
         self.map_minx = msg.info.origin.position.x
         self.map_miny = msg.info.origin.position.y
-        #print(self.map_minx, self.map_miny)
-
-    def odomCallback(self, msg):
-        pass
-        #'''
-        # current position as starting position
-        self.x_start_odom = msg.pose.pose.position.x + 0.2
-        self.y_start_odom = msg.pose.pose.position.y + 0.2
-        self.x_start_grid = (int)((self.x_start_odom- self.map_minx)/self.map_resolution)
-        self.y_start_grid = (int)((self.y_start_odom- self.map_miny)/self.map_resolution)
-        #print(self.x_start_grid, self.y_start_grid)
-        #'''
 
     def filterCallback(self, msg):
-        #pass
-        #'''
-        # current position as starting position
-        
+        # current position as starting position   
         self.x_start_odom = msg.pose.pose.position.x# + 0.2
         self.y_start_odom = msg.pose.pose.position.y# + 0.2
-
         self.x_start_grid = (int)((self.x_start_odom - self.map_minx)/self.map_resolution)
         self.y_start_grid = (int)((self.y_start_odom - self.map_miny)/self.map_resolution)
-        #print(self.x_start_grid, self.y_start_grid)
-        #'''
 
     def new_start(self, point):
         # manual starting position
@@ -143,7 +128,10 @@ class PathPlanner():
         path_smooth = self.smooth_path(path)
         print("path (with smoothing)", path)
 
-        # construct the path
+        print("goal cell:", self.x_target_grid, self.y_target_grid)
+
+
+        # construct the path to be published to the path follower
         rviz_path = Path()
         rviz_path.header.frame_id = 'map' 
 
@@ -167,6 +155,7 @@ class PathPlanner():
         #plt.grid(True)
         #plt.axis("equal")
         #plt.show()
+
         '''
         for c in path:
             path_x = c[0]*pp.map_resolution + self.map_minx
@@ -178,15 +167,16 @@ class PathPlanner():
             pose.pose.position.y = path_y
             rviz_path.poses.append(pose)
         '''
+
         path_pub.publish(rviz_path)
 
-        print("goal cell:", self.x_target_grid, self.y_target_grid)
+
 
     def euclidian_dist(self, x, y, xt, yt):
         h = np.sqrt((x - xt)**2 + (y - yt)**2) 
         return h
 
-    def check_warning(self, x, y, move_cost):
+    def position_penalty(self, x, y, move_cost):
         w = 0
         if (self.map[x + y*self.map_width] == -20) or (self.map[x + y*self.map_width] == -2):
             w = 2.0*move_cost
@@ -246,18 +236,8 @@ class PathPlanner():
         # run algorithm until the end node (target state) is found
         while len(alive_list) > 0:
             iter = iter + 1
-
-            '''
-            # get the current node (first item in list)
-            current_node = alive_list[0]
-            current_idx = 0
-
-            # pick the node with the lowest total cost
-            for idx, item in enumerate(alive_list):
-                if item.f < current_node.f:
-                    current_node = item
-                    current_idx = idx
-            ''' 
+    
+            # get the best node with lowest total cost (first item in list)
             current_node = alive_list[0]
 
             #print("new node at", current_node.x, current_node.y)
@@ -267,7 +247,6 @@ class PathPlanner():
             #alive_list.pop(current_idx) /////////////////////////////////////////////////////////////////////////////////////////////
             heapq.heappop(alive_list)
             dead_list.append(current_node)
-
 
             # check if the current node is on the goal
             if current_node == end_node or iter > 5000:        
@@ -279,18 +258,8 @@ class PathPlanner():
                 return path[::-1], visited[::-1]                # retrun the path (in reversed order)
 
             # generate new children (apply actions to the current best node)
-            '''
-            motions = []
-            if self.euclidian_dist(current_node.x, current_node.x, end_node.x, end_node.y) <= 4:
-                motions = self.motion_short
-            else:
-                motions = self.motion_long
-            '''
-            motions = self.motion_short
-
-
             children = []
-            for motion in motions:
+            for motion in self.motion_short:
                 # get the new node state
                 node_state = (current_node.x + motion[0], current_node.y + motion[1]) # simulate the motion
 
@@ -333,13 +302,12 @@ class PathPlanner():
                 # generate the f, g, h metrics
                 move_cost = np.sqrt(child.movement[0]**2 + child.movement[1]**2)
 
-                child.g = current_node.g + move_cost*0.3                                # path length penalty
-                child.w = current_node.w + self.check_warning(child.x, child.y, move_cost)
-                child.h = self.euclidian_dist(child.x, child.y, end_node.x, end_node.y) # euclidian distance
-                child.f = child.g + child.h + child.w                                            # total cost
+                child.g = current_node.g + move_cost*0.3                                        # path length penalty
+                child.w = current_node.w + self.position_penalty(child.x, child.y, move_cost)   # position penalty
+                child.h = self.euclidian_dist(child.x, child.y, end_node.x, end_node.y)         # euclidian distance
+                child.f = child.g + child.h + child.w                                           # total cost
 
                 # check if child is already in the open list and compare cost
-
                 '''
                 if child in alive_list:
                     if child.g >= alive_list[alive_list.index(child)].g:
@@ -364,40 +332,35 @@ class PathPlanner():
         path = []
         current = current_node
         print("NO PATH FOUND!")
+        '''
+        flag = "NO_PATH_FOUND"
+        flag_pub.publish(flag)
+        '''
         return [], []               # retrun the path (in reversed order)
 
     def smooth_path(self, path):
-        #####################
-        # to do: 1) remove spurious "reverse lines" 2) fix evenly spaced path dots
-        #####################
         smooth_path = []
-
         path_x = []
         path_y = []
-
-        ray_length = 3
-
         last_ok = path[0] # last reached grid cell on the original path
         start = path[0] # start grid to search 
 
+        ray_length = 3
+        ray_iters = 0
 
-        ray_len = 0
         counter = 0
         idx = 1
         while True:
             counter = counter + 1
             if (idx >= len(path) - 1 or counter > len(path)*4):
-
                 # exit the loop
                 break
 
-            # perform raytrace
-            
-            free_path, collision = self.raytrace(start, path[idx])
-            
+            # perform raytrace    
+            free_path, collision = self.raytrace(start, path[idx])         
 
             if not collision:  
-                ray_len = ray_len + 1    
+                ray_iters = ray_iters + 1    
                 # last reached grid cell (without collision)
                 last_ok = path[idx]
                 ray_length = 3*len(free_path)
@@ -412,16 +375,16 @@ class PathPlanner():
 
             # if collision draw a straight line from the current start to the last_ok grid cell
             else:           
-                if ray_len == 0:  
+                if ray_iters == 0:  
                     ray_length = 5               
                     path_x = np.linspace(start[0]*self.map_resolution + self.map_minx, path[idx][0]*self.map_resolution + self.map_minx, num=ray_length, endpoint=True)
                     path_y = np.linspace(start[1]*self.map_resolution + self.map_miny, path[idx][1]*self.map_resolution + self.map_miny, num=ray_length, endpoint=True)
                     # update ray start to the last grid cell
                     start = path[idx]
                     #idx = idx + len(free_path)
-                    idx = idx + ray_len + 1
+                    idx = idx + ray_iters + 1
 
-                elif ray_len > 0:     
+                elif ray_iters > 0:     
                     path_x = np.linspace(start[0]*self.map_resolution + self.map_minx, last_ok[0]*self.map_resolution + self.map_minx, num=ray_length, endpoint=True)
                     path_y = np.linspace(start[1]*self.map_resolution + self.map_miny, last_ok[1]*self.map_resolution + self.map_miny, num=ray_length, endpoint=True)
                     # update ray start to the last_ok grid cell
@@ -431,7 +394,7 @@ class PathPlanner():
                 for i in range(ray_length):
                     smooth_path.append((path_x[i], path_y[i]))
 
-                ray_len = 0
+                ray_iters = 0
         
 
         # smooth the path with a averaging window
@@ -493,9 +456,9 @@ if __name__ == '__main__':
     pp = PathPlanner()
     rospy.Subscriber('/move_base_simple/goal', PoseStamped, pp.update_target)
     rospy.Subscriber("/maze_map_node/map", OccupancyGrid, pp.mapCallback)
-    #rospy.Subscriber("/robot_odom", Odometry, pp.odomCallback)
     rospy.Subscriber("/robot_filter", Odometry, pp.filterCallback)
     path_pub = rospy.Publisher('/aPath', Path, queue_size=10)
+    flag_pub = rospy.Publisher('/astarFlag', String, queue_size=10)
 
     time.sleep(2)
     #pp.new_start([0.2, 0.2])

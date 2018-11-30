@@ -11,6 +11,7 @@ from nav_msgs.msg import Odometry
 from nav_msgs.msg import Path
 import time
 import matplotlib.pyplot as plt
+import std_msgs.msg
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
 from math import cos, sin, atan2, fabs, sqrt
@@ -122,55 +123,37 @@ class PathPlanner():
     def execute_planner(self):
         path, visited = self.A_star()
 
-        print("starting cell:", self.x_start_grid, self.y_start_grid)
-        print("path (no smoothing):", path)
+        if len(path) > 0:
+            print("starting cell:", self.x_start_grid, self.y_start_grid)
+            #print("path (no smoothing):", path)
+            path_smooth = self.smooth_path(path)
+            #print("path (with smoothing)", path)
+            print("goal cell:", self.x_target_grid, self.y_target_grid)
 
-        path_smooth = self.smooth_path(path)
-        print("path (with smoothing)", path)
+            # construct the path to be published to the path follower
+            rviz_path = Path()
+            rviz_path.header.frame_id = 'map' 
 
-        print("goal cell:", self.x_target_grid, self.y_target_grid)
+            #'''
+            for c in path_smooth:
+                path_x = c[0]
+                path_y = c[1]
+                pose = PoseStamped()
+                #pose.header.frame_id = 'map' 
+                pose.pose.position.x = path_x
+                pose.pose.position.y = path_y
+                rviz_path.poses.append(pose)
+                #plt.plot(path_x, path_y, ".r", label="course")                  
+            #'''
+            #plt.grid(True)
+            #plt.axis("equal")
+            #plt.show()
+            path_pub.publish(rviz_path)
 
-
-        # construct the path to be published to the path follower
-        rviz_path = Path()
-        rviz_path.header.frame_id = 'map' 
-
-        #'''
-        for c in path_smooth:
-            #path_x = c[0]*pp.map_resolution
-            #path_y = c[1]*pp.map_resolution
-            path_x = c[0]
-            path_y = c[1]
-
-            pose = PoseStamped()
-            #pose.header.frame_id = 'map' 
-            pose.pose.position.x = path_x
-            pose.pose.position.y = path_y
-            rviz_path.poses.append(pose)
-
-            #plt.plot(path_x, path_y, ".r", label="course")
-            
-            
-        #'''
-        #plt.grid(True)
-        #plt.axis("equal")
-        #plt.show()
-
-        '''
-        for c in path:
-            path_x = c[0]*pp.map_resolution + self.map_minx
-            path_y = c[1]*pp.map_resolution + self.map_miny
-
-            pose = PoseStamped()
-            #pose.header.frame_id = 'map' 
-            pose.pose.position.x = path_x
-            pose.pose.position.y = path_y
-            rviz_path.poses.append(pose)
-        '''
-
-        path_pub.publish(rviz_path)
-
-
+    def send_flag(self, flag_message):
+        flag = std_msgs.msg.String()
+        flag.data = flag_message
+        flag_pub.publish(flag)
 
     def euclidian_dist(self, x, y, xt, yt):
         h = np.sqrt((x - xt)**2 + (y - yt)**2) 
@@ -178,8 +161,12 @@ class PathPlanner():
 
     def position_penalty(self, x, y, move_cost):
         w = 0
-        if (self.map[x + y*self.map_width] == -20) or (self.map[x + y*self.map_width] == -2):
-            w = 2.0*move_cost
+        if self.map[x + y*self.map_width] == -2:
+            w = 2.5*move_cost
+        elif self.map[x + y*self.map_width] == -20:
+            w = 1.4*move_cost
+        elif (self.map[x + y*self.map_width] == -40):
+            w = 0.5*move_cost
         return w
 
     def get_closest_free_space(self, x0, y0):
@@ -196,7 +183,7 @@ class PathPlanner():
             r = r + 1
 
     def A_star(self):
-        print("hello")
+        print("A* algorithm started")
         # environment bounds [m]
         xlb = 0
         xub = self.map_width
@@ -228,7 +215,6 @@ class PathPlanner():
         dead_list = []
 
         # append the start node to the open list
-        # alive_list.append(start_node) /////////////////////////////////////////////////////////////////////////////////////////////
         heapq.heappush(alive_list, start_node)
 
         visited = []
@@ -240,22 +226,29 @@ class PathPlanner():
             # get the best node with lowest total cost (first item in list)
             current_node = alive_list[0]
 
-            #print("new node at", current_node.x, current_node.y)
+            # store the current path
             visited.append((current_node.x, current_node.y))
 
             # remove the current node from the open list, and add it to the closed list
-            #alive_list.pop(current_idx) /////////////////////////////////////////////////////////////////////////////////////////////
             heapq.heappop(alive_list)
             dead_list.append(current_node)
 
             # check if the current node is on the goal
-            if current_node == end_node or iter > 5000:        
+            if current_node == end_node:        
                 path = []
                 current = current_node
                 while current is not None:
                     path.append((current.x, current.y))         # append the path
                     current = current.parent
+
+                print("iters:", iter)
                 return path[::-1], visited[::-1]                # retrun the path (in reversed order)
+
+            elif iter > self.map_width*self.map_height*0.8:
+                print("NO PATH FOUND!")
+                flag = "NO_PATH_FOUND"
+                self.send_flag(flag)
+                return [], []
 
             # generate new children (apply actions to the current best node)
             children = []
@@ -270,7 +263,8 @@ class PathPlanner():
                 # check that the position is not on obstacle
                 #print(node_state[0], node_state[1], end_node.x, end_node.y)
                 if self.euclidian_dist(node_state[0], node_state[1], end_node.x, end_node.y) < 5: 
-                    print("close to goal, let planner go into yellow area")
+                    pass
+                    #print("close to goal, let planner go into yellow area")
                 else:
                     if self.obstacle_collision(node_state[0], node_state[1]):
                         continue
@@ -281,61 +275,31 @@ class PathPlanner():
 
             # loop through the children and compare with already alive and dead nodes
             for child in children:
-                skip_child = False
-
-                '''
-                if child in dead_list:
-                    skip_child = True
-                    break 
-                '''
+                
                 # check if child is on the closed list
-                #'''
-                for closed_child in dead_list:
-                    if child == closed_child:
-                        skip_child = True
-                        break 
-                #'''
-
-                if skip_child:
-                    continue # skip this child
+                if child in dead_list:
+                    continue 
 
                 # generate the f, g, h metrics
                 move_cost = np.sqrt(child.movement[0]**2 + child.movement[1]**2)
-
-                child.g = current_node.g + move_cost*0.3                                        # path length penalty
+                child.g = current_node.g + move_cost*0.35                                        # path length penalty
                 child.w = current_node.w + self.position_penalty(child.x, child.y, move_cost)   # position penalty
                 child.h = self.euclidian_dist(child.x, child.y, end_node.x, end_node.y)         # euclidian distance
                 child.f = child.g + child.h + child.w                                           # total cost
 
                 # check if child is already in the open list and compare cost
-                '''
-                if child in alive_list:
+                if child in alive_list:           
                     if child.g >= alive_list[alive_list.index(child)].g:
-                        skip_child = True
-                        break
-                '''
-                #'''
-                for open_node in alive_list:
-                    if child == open_node and child.g >= open_node.g:
-                        skip_child = True
-                        break
-                #'''
-
-                if skip_child:
-                    continue # skip this child
+                        continue
 
                 # if the child is neither in the closed list nor open list, add it to the open list
-                #alive_list.append(child) //////////////////////////////////////////////////////////////////////////////////////////////////
                 heapq.heappush(alive_list, child)
 
         # if no path found
-        path = []
-        current = current_node
         print("NO PATH FOUND!")
-        '''
         flag = "NO_PATH_FOUND"
-        flag_pub.publish(flag)
-        '''
+        self.send_flag(flag)
+        
         return [], []               # retrun the path (in reversed order)
 
     def smooth_path(self, path):
@@ -458,34 +422,9 @@ if __name__ == '__main__':
     rospy.Subscriber("/maze_map_node/map", OccupancyGrid, pp.mapCallback)
     rospy.Subscriber("/robot_filter", Odometry, pp.filterCallback)
     path_pub = rospy.Publisher('/aPath', Path, queue_size=10)
-    flag_pub = rospy.Publisher('/astarFlag', String, queue_size=10)
-
-    time.sleep(2)
-    #pp.new_start([0.2, 0.2])
-    #pp.new_target([2.2, 0.8])
-    #pp.execute_planner()
+    flag_pub = rospy.Publisher('/PathPlannerFlag', std_msgs.msg.String, queue_size=1)
     pp.Main()
     
-
-    '''
-    pp.new_start([0.2, 0.2])
-    pp.new_target([2.2, 0.8])
-    pp.execute_planner()
-    '''
-
-    '''
-    path_x = [c[0] for c in path]
-    path_y = [c[1] for c in path]
-    plt.plot(path_x, path_y, label="course")
-
-    for (x, y) in visited:
-        plt.plot(x, y, marker='o')
-    
-
-    plt.axis("equal")
-    plt.grid(True)
-    plt.show()
-    '''
 
 
 

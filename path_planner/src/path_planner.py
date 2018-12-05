@@ -70,6 +70,15 @@ class PathPlanner():
         self.x_target_grid = 0 # [1]
         self.y_target_grid = 0 # [1]
 
+        # time variables
+        self.time_start = time.time()
+        self.TIME_LIMIT = 200
+
+        if rospy.get_param("/round") == 2:
+            print("round 2: allow longer time")
+            self.TIME_LIMIT = 500
+
+
         self.motion_short = [(-1, 0), (0, 1), (1, 0), (0, -1), (-1, 1), (1, 1), (1, -1), (-1, -1)]
 
     def Main(self):
@@ -86,8 +95,8 @@ class PathPlanner():
 
     def filterCallback(self, msg):
         # current position as starting position   
-        self.x_start_odom = msg.pose.pose.position.x# + 0.2
-        self.y_start_odom = msg.pose.pose.position.y# + 0.2
+        self.x_start_odom = msg.pose.pose.position.x
+        self.y_start_odom = msg.pose.pose.position.y
         self.x_start_grid = (int)((self.x_start_odom - self.map_minx)/self.map_resolution)
         self.y_start_grid = (int)((self.y_start_odom - self.map_miny)/self.map_resolution)
 
@@ -96,7 +105,7 @@ class PathPlanner():
         self.x_start_odom = point[0]
         self.y_start_odom = point[1]
         self.x_start_grid = (int)((self.x_start_odom - self.map_minx)/self.map_resolution)
-        self.y_start_grid = (int)((self.y_start_odom - self.map_miny)/self.map_resolution)
+        self.y_start_grid = (int)((self.y_start_odom - self.map_miny)/self.map_resolution) 
 
     def new_target(self, point):
         self.x_target_odom = point[0]
@@ -104,9 +113,16 @@ class PathPlanner():
         self.x_target_grid = (int)((self.x_target_odom - self.map_minx)/self.map_resolution) 
         self.y_target_grid = (int)((self.y_target_odom - self.map_miny)/self.map_resolution)
 
+    def is_in_bounds(self, x, y):
+        if (x >= 0 and x < self.map_width):
+            if (y >= 0 and y < self.map_height):
+                return True
+        return False
+
     def obstacle_collision(self, x, y):
         status = False
-        status = (self.map[x + y*self.map_width] == 100) or (self.map[x + y*self.map_width] == -2)
+        if self.is_in_bounds(x, y):
+            status = (self.map[x + y*self.map_width] == 100) or (self.map[x + y*self.map_width] == -2)
         return status
 
     def inflate_collision(self, x, y):
@@ -118,16 +134,59 @@ class PathPlanner():
         print("new target aquired")
         point = (msg.pose.position.x, msg.pose.position.y)
         self.new_target(point)
+
+        # check if start and target is within map
+        if not self.is_in_bounds(self.x_start_grid, self.y_start_grid):
+            print("ROBOT POSITION OUTSIDE MAP")
+            flag = "NO_PATH_FOUND"
+            self.send_flag(flag) 
+            return
+            
+        # check if target is within map
+        if not self.is_in_bounds(self.x_target_grid, self.y_target_grid):
+            print("TARGET POSITION OUTSIDE MAP")
+            flag = "NO_PATH_FOUND"
+            self.send_flag(flag)   
+            return
+
         self.execute_planner()
- 
+
+    def euclidian_dist(self, x, y, xt, yt):
+        h = np.sqrt((x - xt)**2 + (y - yt)**2) 
+        return h
+
+    def position_penalty(self, x, y, move_cost):
+        w = 0
+        if self.map[x + y*self.map_width] == -2:
+            w = 2.5*move_cost
+        elif self.map[x + y*self.map_width] == -20:
+            w = 1.7*move_cost
+        elif (self.map[x + y*self.map_width] == -40):
+            w = 1.2*move_cost
+        return w
+
+    def get_closest_free_space(self, x0, y0):
+        print("getting new grid cell")
+        free_cell = False
+        r = 1
+        while not free_cell:
+            for motion in [(-r, 0), (0, r), (r, 0), (0, -r), (-r, r), (r, r), (r, -r), (-r, -r)]:
+                if self.obstacle_collision(x0 + motion[0], y0 + motion[1]):
+                    continue
+                else:
+                    print("grid cell fix DONE")
+                    return (x0 + motion[0], y0 + motion[1])
+            r = r + 1
+
     def execute_planner(self):
+        # time stamp
+        self.time_start = time.time()
+
         path, visited = self.A_star()
 
         if len(path) > 0:
             print("starting cell:", self.x_start_grid, self.y_start_grid)
-            #print("path (no smoothing):", path)
             path_smooth = self.smooth_path(path)
-            #print("path (with smoothing)", path)
             print("goal cell:", self.x_target_grid, self.y_target_grid)
 
             # construct the path to be published to the path follower
@@ -155,33 +214,9 @@ class PathPlanner():
         flag.data = flag_message
         flag_pub.publish(flag)
 
-    def euclidian_dist(self, x, y, xt, yt):
-        h = np.sqrt((x - xt)**2 + (y - yt)**2) 
-        return h
-
-    def position_penalty(self, x, y, move_cost):
-        w = 0
-        if self.map[x + y*self.map_width] == -2:
-            w = 2.5*move_cost
-        elif self.map[x + y*self.map_width] == -20:
-            w = 1.4*move_cost
-        elif (self.map[x + y*self.map_width] == -40):
-            w = 0.5*move_cost
-        return w
-
-    def get_closest_free_space(self, x0, y0):
-        print("getting new grid cell")
-        free_cell = False
-        r = 1
-        while not free_cell:
-            for motion in [(-r, 0), (0, r), (r, 0), (0, -r), (-r, r), (r, r), (r, -r), (-r, -r)]:
-                if self.obstacle_collision(x0 + motion[0], y0 + motion[1]):
-                    continue
-                else:
-                    print("grid cell fix DONE")
-                    return (x0 + motion[0], y0 + motion[1])
-            r = r + 1
-
+    #########################################
+    #                   A*                  #
+    #########################################
     def A_star(self):
         print("A* algorithm started")
         # environment bounds [m]
@@ -221,7 +256,8 @@ class PathPlanner():
         iter = 0
         # run algorithm until the end node (target state) is found
         while len(alive_list) > 0:
-            iter = iter + 1
+            iter = iter + 1              
+            elapsed = time.time() - self.time_start       
     
             # get the best node with lowest total cost (first item in list)
             current_node = alive_list[0]
@@ -244,11 +280,12 @@ class PathPlanner():
                 print("iters:", iter)
                 return path[::-1], visited[::-1]                # retrun the path (in reversed order)
 
-            elif iter > self.map_width*self.map_height*0.8:
+            elif elapsed > self.TIME_LIMIT:
                 print("NO PATH FOUND!")
                 flag = "NO_PATH_FOUND"
                 self.send_flag(flag)
                 return [], []
+            
 
             # generate new children (apply actions to the current best node)
             children = []
@@ -280,16 +317,22 @@ class PathPlanner():
                 if child in dead_list:
                     continue 
 
+                if child in alive_list: 
+                    continue
+                    
                 # generate the f, g, h metrics
                 move_cost = np.sqrt(child.movement[0]**2 + child.movement[1]**2)
-                child.g = current_node.g + move_cost*0.35                                        # path length penalty
+                child.g = current_node.g + move_cost*0.40                                        # path length penalty
                 child.w = current_node.w + self.position_penalty(child.x, child.y, move_cost)   # position penalty
                 child.h = self.euclidian_dist(child.x, child.y, end_node.x, end_node.y)         # euclidian distance
                 child.f = child.g + child.h + child.w                                           # total cost
 
                 # check if child is already in the open list and compare cost
-                if child in alive_list:           
-                    if child.g >= alive_list[alive_list.index(child)].g:
+                if child in alive_list: 
+                    continue
+                    #if child.g >= max(alive_list).g:
+                    #    continue          
+                    if child.g >= alive_list[alive_list.index(child)].g:                      
                         continue
 
                 # if the child is neither in the closed list nor open list, add it to the open list
@@ -298,9 +341,12 @@ class PathPlanner():
         # if no path found
         print("NO PATH FOUND!")
         flag = "NO_PATH_FOUND"
-        self.send_flag(flag)
-        
+        self.send_flag(flag)      
         return [], []               # retrun the path (in reversed order)
+
+    #########################################
+    #              SMOOTHING                #
+    #########################################
 
     def smooth_path(self, path):
         smooth_path = []
@@ -362,7 +408,7 @@ class PathPlanner():
         
 
         # smooth the path with a averaging window
-        n_window = 20
+        n_window = 18
         smooth_path_final = smooth_path
 
         for i in range(n_window/2+1, len(smooth_path) - n_window - 1):
@@ -374,7 +420,6 @@ class PathPlanner():
             smooth_path_final[i] = (sumx/n_window, sumy/n_window)
      
         print("LEN", len(smooth_path_final))
-
         return smooth_path_final
 
     def raytrace(self, start, end):
@@ -415,14 +460,14 @@ class PathPlanner():
 
 
 if __name__ == '__main__':
-    print("path planner started")
+    print("path planner node started")
 
     pp = PathPlanner()
     rospy.Subscriber('/move_base_simple/goal', PoseStamped, pp.update_target)
     rospy.Subscriber("/maze_map_node/map", OccupancyGrid, pp.mapCallback)
     rospy.Subscriber("/robot_filter", Odometry, pp.filterCallback)
     path_pub = rospy.Publisher('/aPath', Path, queue_size=10)
-    flag_pub = rospy.Publisher('/PathPlannerFlag', std_msgs.msg.String, queue_size=1)
+    flag_pub = rospy.Publisher('/flag_pathplanner', std_msgs.msg.String, queue_size=1)
     pp.Main()
     
 
